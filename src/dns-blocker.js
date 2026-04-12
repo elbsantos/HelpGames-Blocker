@@ -143,14 +143,26 @@ class DNSBlocker {
   // ESCREVER FICHEIRO - WINDOWS (precisa de admin)
   // ============================================================
   async writeFileWindows(content) {
-    // Gravar para temp primeiro e depois copiar
+    console.log('[DNS] Tentando escrever arquivo hosts...');
     const tmp = path.join(os.tmpdir(), 'helpgames-hosts.tmp');
     await fs.writeFile(tmp, content, 'utf-8');
+    console.log('[DNS] Arquivo temporário criado:', tmp);
+    
     try {
+      console.log('[DNS] Tentando copiar para hosts...');
       await execAsync(`copy /Y "${tmp}" "${this.hostsPath}"`);
-    } catch {
-      // Tentar com cmd elevado (vai falhar se não for admin, mas dá mensagem clara)
-      await execAsync(`cmd /c copy /Y "${tmp}" "${this.hostsPath}"`);
+      console.log('[DNS] ✅ Arquivo hosts atualizado com sucesso!');
+    } catch (err1) {
+      console.error('[DNS] ❌ Erro ao copiar (tentativa 1):', err1.message);
+      try {
+        console.log('[DNS] Tentando com cmd elevado...');
+        await execAsync(`cmd /c copy /Y "${tmp}" "${this.hostsPath}"`);
+        console.log('[DNS] ✅ Arquivo hosts atualizado (cmd elevado)!');
+      } catch (err2) {
+        console.error('[DNS] ❌❌ ERRO CRÍTICO - App NÃO está rodando como Administrador!');
+        console.error('[DNS] Detalhes:', err2.message);
+        throw new Error('Precisa rodar como Administrador para modificar arquivo hosts');
+      }
     }
   }
 

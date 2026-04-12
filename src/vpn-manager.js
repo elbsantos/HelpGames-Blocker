@@ -54,10 +54,11 @@ class VPNManager {
       }
 
       if (ips.size === 0) {
-        console.log('[Firewall] Nenhum IP resolvido, a saltar firewall');
+        console.log('[Firewall] ⚠️ Nenhum IP resolvido, pulando firewall');
         return;
       }
 
+      console.log('[Firewall] Criando regra com', ips.size, 'IPs...');
       const ipList = [...ips].join(',');
       await execAsync(
         'netsh advfirewall firewall add rule' +
@@ -67,9 +68,10 @@ class VPNManager {
         ' enable=yes profile=any'
       );
 
-      console.log('[Firewall] Regra criada com', ips.size, 'IPs');
+      console.log('[Firewall] ✅ Regra criada com sucesso!', ips.size, 'IPs bloqueados');
     } catch (error) {
-      console.error('[Firewall] Erro ao criar regra:', error.message);
+      console.error('[Firewall] ❌ ERRO ao criar regra:', error.message);
+      console.error('[Firewall] App precisa rodar como Administrador!');
     }
   }
 

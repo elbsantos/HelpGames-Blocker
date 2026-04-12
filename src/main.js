@@ -195,7 +195,7 @@ async function checkBlockageStatus() {
       console.log('[HelpGames] Bloqueio activo!', dnsBlocker.getBlockedSitesCount(), 'sites');
 
     } else if (!status.isBlocked && currentlyBlocked) {
-      // DESACTIVAR bloqueio
+      // DESACTIVAR bloqueio (só notifica se estava bloqueado antes)
       await dnsBlocker.stop();
       await vpnManager.stop();
       stopBlockedPageServer();
@@ -206,6 +206,7 @@ async function checkBlockageStatus() {
       console.log('[HelpGames] Bloqueio removido.');
 
     } else if (status.isBlocked) {
+      // Bloqueio continua ativo, apenas atualizar menu
       updateTrayMenu();
     }
 
@@ -225,7 +226,13 @@ ipcMain.handle('login', async (event, { email, password }) => {
     store.set('user', result.user);
     store.set('sessionCookie', API.getSessionCookie());
 
-    if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
+    // Fechar janela com delay para garantir que a UI processou
+    setTimeout(() => {
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        loginWindow.close();
+        loginWindow = null;
+      }
+    }, 500);
 
     updateTrayMenu();
     await startPolling();
