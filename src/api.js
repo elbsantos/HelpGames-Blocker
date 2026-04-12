@@ -169,6 +169,22 @@ class API {
     }
   }
 
+  // REGISTRAR TENTATIVA BLOQUEADA
+  static async reportBlockedAttempt(domain) {
+    try {
+      await trpcMutate('blockerAttempts.create', {
+        attempts: [{
+          domain,
+          timestamp: Date.now(),
+          blocked: true
+        }]
+      });
+      console.log('[API] Tentativa bloqueada registrada:', domain);
+    } catch (error) {
+      console.error('[API] Erro ao reportar tentativa:', error.message);
+    }
+  }
+
   // HELPERS DE SESSAO
   static hasSession() {
     return sessionCookie !== null;

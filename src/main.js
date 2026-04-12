@@ -260,6 +260,17 @@ app.whenReady().then(async () => {
   vpnManager = new VPNManager();
   await vpnManager.initialize(); // limpa regras antigas do firewall
 
+  // Configurar callback para reportar tentativas bloqueadas
+  dnsBlocker._onBlocked = async (domain) => {
+    if (!API.hasSession()) return;
+    try {
+      await API.reportBlockedAttempt(domain);
+      console.log('[HelpGames] Tentativa bloqueada reportada:', domain);
+    } catch (err) {
+      console.error('[HelpGames] Erro ao reportar tentativa:', err.message);
+    }
+  };
+
   const savedCookie = store.get('sessionCookie');
   const savedUser   = store.get('user');
 

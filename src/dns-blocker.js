@@ -173,16 +173,29 @@ class DNSBlocker {
   // ============================================================
   isDomainBlocked(domain) {
     const clean = domain.replace(/^www\./, '').toLowerCase();
-    if (this.blockedSites.has(clean)) return true;
-    if (this.blockedSites.has('www.' + clean)) return true;
+    let isBlocked = false;
+    
+    if (this.blockedSites.has(clean)) isBlocked = true;
+    if (this.blockedSites.has('www.' + clean)) isBlocked = true;
 
     // Verificar subdomínios (ex: mobile.bet365.com)
-    const parts = clean.split('.');
-    for (let i = 1; i < parts.length - 1; i++) {
-      const parent = parts.slice(i).join('.');
-      if (this.blockedSites.has(parent)) return true;
+    if (!isBlocked) {
+      const parts = clean.split('.');
+      for (let i = 1; i < parts.length - 1; i++) {
+        const parent = parts.slice(i).join('.');
+        if (this.blockedSites.has(parent)) {
+          isBlocked = true;
+          break;
+        }
+      }
     }
-    return false;
+    
+    // Se bloqueado, reportar tentativa
+    if (isBlocked && this._onBlocked) {
+      this._onBlocked(clean).catch(() => {});
+    }
+    
+    return isBlocked;
   }
 
   // ============================================================
