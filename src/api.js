@@ -1,18 +1,12 @@
 const axios = require('axios');
 
-// ============================================================
-// API CLIENT - Comunicação com Railway via tRPC batch
-// ============================================================
-
 const API_BASE_URL = process.env.API_URL || 'https://helpgames-production.up.railway.app/api/trpc';
 
 const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 let sessionCookie = null;
@@ -32,24 +26,14 @@ function getAuthHeaders() {
   return { Cookie: sessionCookie };
 }
 
-// tRPC query (GET) - formato batch
 async function trpcQuery(procedure, input) {
   const inputObj = { '0': { json: input !== undefined ? input : null } };
-
   const response = await http.get('/' + procedure, {
-    params: {
-      batch: '1',
-      input: JSON.stringify(inputObj),
-    },
+    params: { batch: '1', input: JSON.stringify(inputObj) },
     headers: getAuthHeaders(),
   });
-
-  if (response.headers['set-cookie']) {
-    setSessionCookie(response.headers['set-cookie']);
-  }
-
+  if (response.headers['set-cookie']) setSessionCookie(response.headers['set-cookie']);
   const data = response.data;
-
   if (Array.isArray(data)) {
     const result = data[0];
     if (result && result.error) {
@@ -61,29 +45,18 @@ async function trpcQuery(procedure, input) {
     }
     return null;
   }
-
-  if (data && data.error) {
-    throw new Error(data.error.message || 'Erro na API');
-  }
-
+  if (data && data.error) throw new Error(data.error.message || 'Erro na API');
   return data;
 }
 
-// tRPC mutation (POST) - formato batch
 async function trpcMutate(procedure, input) {
   const body = { '0': { json: input } };
-
   const response = await http.post('/' + procedure, body, {
     params: { batch: '1' },
     headers: getAuthHeaders(),
   });
-
-  if (response.headers['set-cookie']) {
-    setSessionCookie(response.headers['set-cookie']);
-  }
-
+  if (response.headers['set-cookie']) setSessionCookie(response.headers['set-cookie']);
   const data = response.data;
-
   if (Array.isArray(data)) {
     const result = data[0];
     if (result && result.error) {
@@ -95,25 +68,18 @@ async function trpcMutate(procedure, input) {
     }
     return null;
   }
-
-  if (data && data.error) {
-    throw new Error(data.error.message || 'Erro na API');
-  }
-
+  if (data && data.error) throw new Error(data.error.message || 'Erro na API');
   return data;
 }
 
 class API {
 
+  // LOGIN
   static async login(email, password) {
     try {
       sessionCookie = null;
       const result = await trpcMutate('auth.login', { email: email, password: password });
-
-      if (!result || !result.success) {
-        throw new Error('Login falhou');
-      }
-
+      if (!result || !result.success) throw new Error('Login falhou');
       return { success: true, user: result.user };
     } catch (error) {
       let msg = 'Email ou senha incorrectos';
@@ -129,6 +95,7 @@ class API {
     }
   }
 
+  // VERIFICAR SESSAO
   static async getMe() {
     try {
       return await trpcQuery('auth.me');
@@ -137,6 +104,7 @@ class API {
     }
   }
 
+  // LOGOUT
   static async logout() {
     try {
       await trpcMutate('auth.logout', {});
@@ -147,30 +115,39 @@ class API {
     }
   }
 
-  static async sync() {
+  // ESTADO DO BLOQUEIO
+  static async getBlockageStatus() {
     try {
-      const result = await trpcQuery('blockerSync.sync');
-      return result || { success: true, sitesUpdated: false };
+      const result = await trpcQuery('betsBlockage.getStatus');
+      return result || { isBlocked: false, remainingMinutes: 0, remainingSeconds: 0 };
     } catch (error) {
-      console.error('[API] Erro ao sincronizar:', error.message);
-      return { success: false, sitesUpdated: false };
+      // 401 = sessão expirou — retornar null para main.js detectar
+      if (error.response && error.response.status === 401) {
+        console.log('[API] Sessao expirada (401)');
+        sessionCookie = null;
+        return null;
+      }
+      console.error('[API] Erro ao verificar bloqueio:', error.message);
+      return { isBlocked: false, remainingMinutes: 0, remainingSeconds: 0 };
     }
   }
 
+  // LISTA DE SITES BLOQUEADOS - usa blockList.getDomains (2500+ sites da BD)
   static async getBlockedSites() {
     try {
-      const result = await trpcQuery('blockerSites.list');
-      if (result && result.sites && result.sites.length > 0) {
-        console.log('[API] Sites recebidos do servidor:', result.sites.length);
-        return result.sites;
+      const result = await trpcQuery('blockList.getDomains');
+      if (result && result.domains && result.domains.length > 0) {
+        console.log('[API] Dominios recebidos:', result.domains.length, '| Fonte:', result.source);
+        return result.domains;
       }
       return await this.getLocalBlockedSites();
     } catch (error) {
-      console.error('[API] Erro ao buscar sites, usando lista local:', error.message);
+      console.error('[API] Erro ao buscar dominios, usando lista local:', error.message);
       return await this.getLocalBlockedSites();
     }
   }
 
+  // LISTA LOCAL (fallback offline)
   static async getLocalBlockedSites() {
     const fs = require('fs').promises;
     const path = require('path');
@@ -190,25 +167,7 @@ class API {
     }
   }
 
-  static async sendBlockedAttempts(attempts) {
-    if (!attempts || attempts.length === 0) return;
-    try {
-      const result = await trpcMutate('blockerAttempts.create', { attempts: attempts });
-      console.log('[API] Tentativas enviadas:', attempts.length);
-      return result;
-    } catch (error) {
-      console.error('[API] Erro ao enviar tentativas:', error.message);
-    }
-  }
-
-  static async getStats() {
-    try {
-      return await trpcQuery('blockerAttempts.stats');
-    } catch (e) {
-      return { blockedToday: 0, blockedTotal: 0 };
-    }
-  }
-
+  // HELPERS DE SESSAO
   static hasSession() {
     return sessionCookie !== null;
   }

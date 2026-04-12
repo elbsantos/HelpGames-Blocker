@@ -84,7 +84,7 @@ class DNSBlocker {
       // Construir novo bloco
       const lines = [HOSTS_MARKER_BEGIN];
       for (const site of this.blockedSites) {
-        lines.push(`0.0.0.0 ${site}`);
+        lines.push(`127.0.0.1 ${site}`);
       }
       lines.push(HOSTS_MARKER_END);
 

@@ -1,350 +1,293 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const DNSBlocker = require('./dns-blocker');
 const VPNManager = require('./vpn-manager');
 const API = require('./api');
+const { startBlockedPageServer, stopBlockedPageServer, setRemainingSecondsGetter } = require('./blocked-page-server');
 
-// ============================================================
-// CONFIGURAÇÃO
-// ============================================================
 const store = new Store();
 const isDev = process.argv.includes('--dev');
 
-let mainWindow;
 let tray;
+let loginWindow;
 let dnsBlocker;
 let vpnManager;
-let syncInterval;
+let pollInterval;
+let currentlyBlocked = false;
+let remainingSeconds = 0;
+
+// Iniciar com o Windows
+if (!isDev) {
+  app.setLoginItemSettings({
+    openAtLogin: true,
+    openAsHidden: true,
+    name: 'HelpGames Blocker',
+  });
+}
+
+// Passar tempo restante para a página de bloqueio
+setRemainingSecondsGetter(() => remainingSeconds);
 
 // ============================================================
-// CRIAR JANELA PRINCIPAL
+// JANELA DE LOGIN
 // ============================================================
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    minWidth: 600,
-    minHeight: 400,
+function createLoginWindow() {
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.show();
+    loginWindow.focus();
+    return;
+  }
+
+  loginWindow = new BrowserWindow({
+    width: 420,
+    height: 480,
+    resizable: false,
+    center: true,
     icon: path.join(__dirname, '../assets/icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-    frame: true,
     backgroundColor: '#0f172a',
+    title: 'HelpGames Blocker',
+    maximizable: false,
   });
 
-  mainWindow.loadFile('src/renderer/index.html');
-
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
-
-  // Minimizar para bandeja ao fechar
-  mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-  });
+  loginWindow.loadFile('src/renderer/index.html');
+  if (isDev) loginWindow.webContents.openDevTools();
+  loginWindow.on('closed', () => { loginWindow = null; });
 }
 
 // ============================================================
-// CRIAR TRAY ICON
+// TRAY
 // ============================================================
 function createTray() {
   try {
     tray = new Tray(path.join(__dirname, '../assets/tray-icon.png'));
-  } catch {
-    // Se não tiver ícone, cria sem
-    console.warn('[Tray] ⚠️ Ícone não encontrado, usando padrão');
+  } catch (e) {
+    console.warn('[Tray] Icone nao encontrado');
+    return;
   }
+  updateTrayMenu();
+  tray.on('double-click', openDashboardWeb);
+}
 
-  function buildMenu() {
-    const isActive = dnsBlocker?.isActive() || false;
-    const count = dnsBlocker?.getBlockedSitesCount() || 0;
-    const user = store.get('user');
+function updateTrayMenu() {
+  if (!tray) return;
+  const user = store.get('user');
+  const isLoggedIn = API.hasSession() && user;
 
-    return Menu.buildFromTemplate([
-      { label: 'HelpGames Blocker', enabled: false },
-      { type: 'separator' },
-      { label: `Status: ${isActive ? '✅ Activo' : '⚠️ Inactivo'}`, enabled: false },
-      { label: `Sites bloqueados: ${count.toLocaleString()}`, enabled: false },
-      user ? { label: `Utilizador: ${user.email}`, enabled: false } : { type: 'separator' },
-      { type: 'separator' },
-      {
-        label: 'Abrir Dashboard',
-        click: () => { mainWindow?.show(); },
+  const statusLabel = currentlyBlocked
+    ? '🛡️  Bloqueio Activo' + (remainingSeconds > 0 ? ' (' + Math.ceil(remainingSeconds / 60) + 'min)' : '')
+    : '⚪  Aguardando activação';
+
+  const menu = Menu.buildFromTemplate([
+    { label: 'HelpGames Blocker', enabled: false },
+    { type: 'separator' },
+    { label: statusLabel, enabled: false },
+    isLoggedIn
+      ? { label: '👤  ' + user.email, enabled: false }
+      : { label: '⚠️  Não ligado', enabled: false },
+    { type: 'separator' },
+    { label: '🌐  Abrir Dashboard Web', click: openDashboardWeb },
+    !isLoggedIn
+      ? { label: '🔑  Fazer Login', click: createLoginWindow }
+      : { label: '🚪  Terminar Sessão', click: doLogout },
+    { type: 'separator' },
+    {
+      label: '❌  Sair do HelpGames Blocker',
+      click: async () => {
+        const choice = dialog.showMessageBoxSync({
+          type: 'question',
+          buttons: ['Cancelar', 'Sair'],
+          defaultId: 0,
+          title: 'Sair',
+          message: 'Ao sair, os sites de apostas deixarão de estar bloqueados.',
+        });
+        if (choice === 1) { app.isQuitting = true; app.quit(); }
       },
-      {
-        label: 'Abrir helpgames.pt',
-        click: () => { require('electron').shell.openExternal('https://helpgames.pt'); },
-      },
-      { type: 'separator' },
-      {
-        label: 'Sair',
-        click: () => {
-          app.isQuitting = true;
-          app.quit();
-        },
-      },
-    ]);
-  }
+    },
+  ]);
 
-  if (tray) {
-    tray.setToolTip('HelpGames Blocker – Proteção Activa');
-    tray.setContextMenu(buildMenu());
-    tray.on('click', () => { mainWindow?.show(); });
+  tray.setContextMenu(menu);
+  tray.setToolTip(currentlyBlocked ? 'HelpGames – 🛡️ Bloqueio Activo' : 'HelpGames – Aguardando');
+}
 
-    // Actualizar menu a cada 30s
-    setInterval(() => {
-      if (tray) tray.setContextMenu(buildMenu());
-    }, 30000);
-  }
+function openDashboardWeb() {
+  require('electron').shell.openExternal('https://helpgames-production.up.railway.app');
 }
 
 // ============================================================
-// INICIALIZAR BLOQUEIO
+// LOGOUT
 // ============================================================
-async function initializeBlocking() {
-  console.log('[HelpGames] 🚀 Inicializando bloqueio...');
+async function doLogout() {
+  const choice = dialog.showMessageBoxSync({
+    type: 'question',
+    buttons: ['Cancelar', 'Terminar Sessão'],
+    defaultId: 0,
+    title: 'Terminar Sessão',
+    message: 'Terminar sessão irá desactivar o bloqueio.',
+  });
+  if (choice !== 1) return;
 
-  if (!dnsBlocker) {
-    dnsBlocker = new DNSBlocker();
-    await dnsBlocker.initialize();
-  }
-
-  if (!vpnManager) {
-    vpnManager = new VPNManager();
-    await vpnManager.initialize();
-  }
-
-  // Carregar lista de sites
-  const sites = await API.getBlockedSites();
-  await dnsBlocker.setBlockedSites(sites);
-  await vpnManager.setBlockedSites(sites);
-
-  console.log('[HelpGames] ✅ Bloqueio activo!', dnsBlocker.getBlockedSitesCount(), 'domínios');
-
-  // Sincronizar a cada 5 minutos
-  if (syncInterval) clearInterval(syncInterval);
-  syncInterval = setInterval(syncWithServer, 5 * 60 * 1000);
-
-  // Primeira sincronização após 10s
-  setTimeout(syncWithServer, 10 * 1000);
+  if (pollInterval) clearInterval(pollInterval);
+  await API.logout();
+  store.delete('user');
+  store.delete('sessionCookie');
+  if (dnsBlocker) await dnsBlocker.stop();
+  if (vpnManager) await vpnManager.stop();
+  stopBlockedPageServer();
+  currentlyBlocked = false;
+  remainingSeconds = 0;
+  updateTrayMenu();
+  showNotification('Sessão terminada', 'O bloqueio foi desactivado.');
 }
 
 // ============================================================
-// SINCRONIZAR COM SERVIDOR
+// NOTIFICAÇÃO
 // ============================================================
-async function syncWithServer() {
+function showNotification(title, body) {
+  try { new Notification({ title, body, silent: false }).show(); } catch (e) {}
+}
+
+// ============================================================
+// POLLING
+// ============================================================
+async function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  await checkBlockageStatus();
+  pollInterval = setInterval(checkBlockageStatus, 30 * 1000);
+  console.log('[HelpGames] Polling iniciado (30s)');
+}
+
+async function checkBlockageStatus() {
   try {
-    if (!API.hasSession()) return;
-
-    // Buscar estado do servidor
-    const updates = await API.sync();
-
-    // Enviar tentativas bloqueadas acumuladas
-    const pending = store.get('pendingAttempts', []);
-    if (pending.length > 0) {
-      await API.sendBlockedAttempts(pending);
-      store.set('pendingAttempts', []);
-      console.log('[HelpGames] 📤 Enviadas', pending.length, 'tentativas ao servidor');
+    if (!API.hasSession()) {
+      showNotification('⚠️ HelpGames', 'Sessão expirada. Faz login novamente.');
+      createLoginWindow();
+      if (pollInterval) clearInterval(pollInterval);
+      return;
     }
 
-    // Se lista de sites foi actualizada, recarregar
-    if (updates?.sitesUpdated) {
-      const newSites = await API.getBlockedSites();
-      await dnsBlocker?.setBlockedSites(newSites);
-      await vpnManager?.setBlockedSites(newSites);
-      console.log('[HelpGames] 🔄 Lista de sites actualizada');
+    const status = await API.getBlockageStatus();
+
+    // Se getBlockageStatus retornou null (ex: 401), sessão expirou
+    if (!status) {
+      store.delete('sessionCookie');
+      createLoginWindow();
+      if (pollInterval) clearInterval(pollInterval);
+      return;
     }
 
-    console.log('[HelpGames] 🔄 Sincronização OK');
+    remainingSeconds = status.remainingSeconds || 0;
+
+    if (status.isBlocked && !currentlyBlocked) {
+      // ACTIVAR bloqueio
+      const sites = await API.getBlockedSites();
+      await dnsBlocker.setBlockedSites(sites);
+      await vpnManager.setBlockedSites(sites);
+      startBlockedPageServer();
+      currentlyBlocked = true;
+      updateTrayMenu();
+      showNotification('🛡️ Bloqueio Activado', 'Sites de apostas estão bloqueados.');
+      console.log('[HelpGames] Bloqueio activo!', dnsBlocker.getBlockedSitesCount(), 'sites');
+
+    } else if (!status.isBlocked && currentlyBlocked) {
+      // DESACTIVAR bloqueio
+      await dnsBlocker.stop();
+      await vpnManager.stop();
+      stopBlockedPageServer();
+      currentlyBlocked = false;
+      remainingSeconds = 0;
+      updateTrayMenu();
+      showNotification('⏱️ Bloqueio Expirou', 'O período de protecção terminou.');
+      console.log('[HelpGames] Bloqueio removido.');
+
+    } else if (status.isBlocked) {
+      updateTrayMenu();
+    }
+
   } catch (error) {
-    console.error('[HelpGames] ❌ Erro ao sincronizar:', error.message);
+    console.error('[HelpGames] Erro no polling:', error.message);
   }
 }
 
 // ============================================================
-// REGISTAR TENTATIVA BLOQUEADA
+// IPC
 // ============================================================
-function registerBlockedAttempt(domain) {
-  // Guardar localmente para sincronizar depois
-  const attempts = store.get('blockedAttempts', []);
-  const pending  = store.get('pendingAttempts', []);
-
-  const entry = { domain, timestamp: Date.now(), blocked: true };
-
-  // Histórico local (max 100)
-  attempts.unshift(entry);
-  store.set('blockedAttempts', attempts.slice(0, 100));
-
-  // Fila para enviar ao servidor
-  pending.push(entry);
-  store.set('pendingAttempts', pending);
-
-  // Notificar janela se estiver aberta
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('attempt-blocked', domain);
-  }
-
-  // Notificação do sistema
-  try {
-    new Notification({
-      title: '🚫 HelpGames Blocker',
-      body: `Acesso bloqueado: ${domain}`,
-      silent: true,
-    }).show();
-  } catch { /* Notificações podem não estar disponíveis */ }
-
-  console.log('[HelpGames] 🚫 BLOQUEADO:', domain);
-}
-
-// ============================================================
-// IPC HANDLERS
-// ============================================================
-
-ipcMain.handle('get-status', async () => {
-  const user = store.get('user', null);
-  const attempts = store.get('blockedAttempts', []);
-  const today = new Date().toDateString();
-
-  return {
-    isLoggedIn: API.hasSession() && user !== null,
-    user,
-    dnsActive:   dnsBlocker?.isActive()  || false,
-    vpnActive:   vpnManager?.isActive()  || false,
-    totalSites:  dnsBlocker?.getBlockedSitesCount() || 0,
-    blockedToday: attempts.filter(a => new Date(a.timestamp).toDateString() === today).length,
-    blockedTotal: attempts.length,
-  };
-});
-
-ipcMain.handle('get-recent-attempts', async () => {
-  return store.get('blockedAttempts', []).slice(0, 20);
-});
-
 ipcMain.handle('login', async (event, { email, password }) => {
   try {
     const result = await API.login(email, password);
+    if (!result.success) return { success: false, error: 'Login falhou' };
 
-    if (!result.success) {
-      return { success: false, error: 'Login falhou' };
-    }
-
-    // Persistir sessão e utilizador
     store.set('user', result.user);
     store.set('sessionCookie', API.getSessionCookie());
 
-    // Iniciar bloqueio
-    await initializeBlocking();
+    if (loginWindow && !loginWindow.isDestroyed()) loginWindow.close();
 
+    updateTrayMenu();
+    await startPolling();
+
+    showNotification('✅ HelpGames Blocker activo', 'A monitorizar o teu estado de protecção.');
     return { success: true, user: result.user };
   } catch (error) {
-    console.error('[Login] ❌', error.message);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('logout', async () => {
-  try {
-    if (syncInterval) clearInterval(syncInterval);
+ipcMain.handle('get-status', async () => ({
+  isLoggedIn: API.hasSession(),
+  user: store.get('user', null),
+  isBlocked: currentlyBlocked,
+  totalSites: dnsBlocker ? dnsBlocker.getBlockedSitesCount() : 0,
+}));
 
-    await API.logout();
-    store.delete('user');
-    store.delete('sessionCookie');
-
-    if (dnsBlocker) {
-      await dnsBlocker.stop();
-      dnsBlocker = null;
-    }
-    if (vpnManager) {
-      await vpnManager.stop();
-      vpnManager = null;
-    }
-
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('open-web-dashboard', async () => {
-  require('electron').shell.openExternal('https://helpgames.pt');
-});
-
-ipcMain.handle('get-server-stats', async () => {
-  if (!API.hasSession()) return null;
-  return await API.getStats();
-});
+ipcMain.handle('open-web-dashboard', openDashboardWeb);
 
 // ============================================================
-// APP LIFECYCLE
+// LIFECYCLE
 // ============================================================
 app.whenReady().then(async () => {
-  createWindow();
+  if (app.dock) app.dock.hide();
+
   createTray();
 
-  // Tentar restaurar sessão guardada
+  dnsBlocker = new DNSBlocker();
+  await dnsBlocker.initialize();
+
+  vpnManager = new VPNManager();
+  await vpnManager.initialize(); // limpa regras antigas do firewall
+
   const savedCookie = store.get('sessionCookie');
   const savedUser   = store.get('user');
 
   if (savedCookie && savedUser) {
     API.restoreSession(savedCookie);
-
-    // Verificar se sessão ainda é válida
     const me = await API.getMe();
-
     if (me && me.id) {
-      console.log('[HelpGames] ✅ Sessão restaurada para:', me.email);
+      console.log('[HelpGames] Sessao restaurada:', me.email);
       store.set('user', me);
-
-      try {
-        await initializeBlocking();
-        mainWindow.webContents.on('did-finish-load', () => {
-          mainWindow.webContents.send('logged-in', me);
-        });
-      } catch (error) {
-        console.error('[HelpGames] ❌ Erro ao inicializar bloqueio:', error.message);
-      }
+      updateTrayMenu();
+      await startPolling();
     } else {
-      // Sessão expirou
       store.delete('user');
       store.delete('sessionCookie');
-      console.log('[HelpGames] ℹ️ Sessão expirada, é necessário fazer login');
+      createLoginWindow();
     }
+  } else {
+    createLoginWindow();
   }
 });
 
-app.on('window-all-closed', () => {
-  // Não sair – continua em background na bandeja
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
+app.on('window-all-closed', () => { /* continua em background */ });
+app.on('activate', () => { if (!API.hasSession()) createLoginWindow(); });
 app.on('before-quit', async () => {
-  console.log('[HelpGames] 👋 Encerrando...');
-  if (syncInterval) clearInterval(syncInterval);
-
-  // Tentar enviar tentativas pendentes antes de sair
-  try {
-    const pending = store.get('pendingAttempts', []);
-    if (pending.length > 0 && API.hasSession()) {
-      await API.sendBlockedAttempts(pending);
-      store.set('pendingAttempts', []);
-    }
-  } catch { /* ignora erros no fecho */ }
-
+  if (pollInterval) clearInterval(pollInterval);
+  stopBlockedPageServer();
   if (dnsBlocker) await dnsBlocker.stop().catch(() => {});
   if (vpnManager) await vpnManager.stop().catch(() => {});
 });
 
-// Exportar para dns-blocker.js poder chamar
-module.exports = { registerBlockedAttempt };
+module.exports = {};
