@@ -92,6 +92,30 @@ function updateTrayMenu() {
       : { label: '⚠️  Não ligado', enabled: false },
     { type: 'separator' },
     { label: '🌐  Abrir Dashboard Web', click: openDashboardWeb },
+    ...(isLoggedIn ? [
+      {
+        label: '🔄  Atualizar Status Agora',
+        click: async () => {
+          console.log('[Tray] ⚡ Atualização manual solicitada');
+          await checkBlockageStatus();
+          showNotification('✅ Status Atualizado', 'Verificação manual executada com sucesso.');
+        },
+      },
+      {
+        label: '🐛  Ver Logs de Debug',
+        click: () => {
+          console.log('\n' + '='.repeat(60));
+          console.log('📊 DEBUG STATUS:');
+          console.log('  - currentlyBlocked:', currentlyBlocked);
+          console.log('  - remainingSeconds:', remainingSeconds);
+          console.log('  - Total sites:', dnsBlocker ? dnsBlocker.getBlockedSitesCount() : 0);
+          console.log('  - Session:', API.getSessionCookie() ? '✅ Presente' : '❌ Ausente');
+          console.log('  - User:', user ? user.email : '❌ Nenhum');
+          console.log('='.repeat(60) + '\n');
+          showNotification('🐛 Debug', 'Logs escritos no console.');
+        },
+      },
+    ] : []),
     !isLoggedIn
       ? { label: '🔑  Fazer Login', click: createLoginWindow }
       : { label: '🚪  Terminar Sessão', click: doLogout },
@@ -164,7 +188,10 @@ async function startPolling() {
 
 async function checkBlockageStatus() {
   try {
+    console.log('[HelpGames] 🔍 Verificando status do bloqueio...');
+    
     if (!API.hasSession()) {
+      console.log('[HelpGames] ❌ Sem sessão ativa');
       showNotification('⚠️ HelpGames', 'Sessão expirada. Faz login novamente.');
       createLoginWindow();
       if (pollInterval) clearInterval(pollInterval);
@@ -172,9 +199,11 @@ async function checkBlockageStatus() {
     }
 
     const status = await API.getBlockageStatus();
+    console.log('[HelpGames] 📊 Status recebido:', JSON.stringify(status));
 
     // Se getBlockageStatus retornou null (ex: 401), sessão expirou
     if (!status) {
+      console.log('[HelpGames] ❌ Status null - sessão expirada no backend');
       store.delete('sessionCookie');
       createLoginWindow();
       if (pollInterval) clearInterval(pollInterval);
@@ -182,20 +211,29 @@ async function checkBlockageStatus() {
     }
 
     remainingSeconds = status.remainingSeconds || 0;
+    
+    console.log('[HelpGames] 📌 Estado atual:');
+    console.log('  - Backend isBlocked:', status.isBlocked);
+    console.log('  - Local currentlyBlocked:', currentlyBlocked);
+    console.log('  - remainingSeconds:', remainingSeconds);
 
     if (status.isBlocked && !currentlyBlocked) {
       // ACTIVAR bloqueio
+      console.log('[HelpGames] ✅ ATIVANDO bloqueio local...');
       const sites = await API.getBlockedSites();
+      console.log('[HelpGames] 📥 Recebidos', sites.length, 'sites para bloquear');
+      
       await dnsBlocker.setBlockedSites(sites);
       await vpnManager.setBlockedSites(sites);
       startBlockedPageServer();
       currentlyBlocked = true;
       updateTrayMenu();
       showNotification('🛡️ Bloqueio Activado', 'Sites de apostas estão bloqueados.');
-      console.log('[HelpGames] Bloqueio activo!', dnsBlocker.getBlockedSitesCount(), 'sites');
+      console.log('[HelpGames] ✅ Bloqueio activo!', dnsBlocker.getBlockedSitesCount(), 'sites');
 
     } else if (!status.isBlocked && currentlyBlocked) {
       // DESACTIVAR bloqueio (só notifica se estava bloqueado antes)
+      console.log('[HelpGames] ❌ DESATIVANDO bloqueio local...');
       await dnsBlocker.stop();
       await vpnManager.stop();
       stopBlockedPageServer();
@@ -203,15 +241,20 @@ async function checkBlockageStatus() {
       remainingSeconds = 0;
       updateTrayMenu();
       showNotification('⏱️ Bloqueio Expirou', 'O período de protecção terminou.');
-      console.log('[HelpGames] Bloqueio removido.');
+      console.log('[HelpGames] ❌ Bloqueio removido.');
 
     } else if (status.isBlocked) {
       // Bloqueio continua ativo, apenas atualizar menu
+      console.log('[HelpGames] ⏳ Bloqueio continua ativo (', Math.floor(remainingSeconds/60), 'min restantes)');
       updateTrayMenu();
+    } else {
+      // Sem bloqueio ativo
+      console.log('[HelpGames] ⭕ Sem bloqueio ativo');
     }
 
   } catch (error) {
-    console.error('[HelpGames] Erro no polling:', error.message);
+    console.error('[HelpGames] ❌ Erro no polling:', error.message);
+    console.error(error.stack);
   }
 }
 
