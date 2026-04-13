@@ -1,5 +1,19 @@
 # Changelog - HelpGames Blocker
 
+## [1.2.1] - 2026-04-13
+
+### 🐛 Correções
+- **Logs detalhados de debug**: Rastreamento completo do fluxo de sincronização
+- **Opções de debug no tray**: "Atualizar Status Agora" e "Ver Logs de Debug"
+- Melhor visibilidade do estado de bloqueio para diagnóstico
+
+### 🔧 Melhorias
+- Console mostra estado completo a cada verificação
+- Menu do tray permite forçar verificação manual
+- Facilita identificação de problemas de sincronização
+
+---
+
 ## [1.2.0] - 2026-04-12
 
 ### ✨ Novidades

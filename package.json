@@ -1,6 +1,6 @@
 {
   "name": "helpgames-blocker",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "HelpGames Blocker – Bloqueio de sites de apostas via hosts + firewall",
   "main": "src/main.js",
   "scripts": {
