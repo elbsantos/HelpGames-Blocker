@@ -15,8 +15,8 @@ function setSessionCookie(cookieHeader) {
   if (!cookieHeader) return;
   const cookies = Array.isArray(cookieHeader) ? cookieHeader : [cookieHeader];
   for (const c of cookies) {
-    // O backend usa o cookie 'app_session_id'
-    if (c.includes('app_session_id')) {
+    // O backend usa o cookie 'connect.sid'
+    if (c.includes('connect.sid')) {
       sessionCookie = c.split(';')[0];
       console.log('[API] Cookie de sessao guardado:', sessionCookie.substring(0, 30) + '...');
     }
