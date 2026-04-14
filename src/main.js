@@ -16,6 +16,7 @@ let vpnManager;
 let pollInterval;
 let currentlyBlocked = false;
 let remainingSeconds = 0;
+let blockageActivatedAt = 0; // timestamp de quando bloqueio foi ativado
 
 // Iniciar com o Windows
 if (!isDev) {
@@ -220,6 +221,7 @@ async function checkBlockageStatus() {
     if (status.isBlocked && !currentlyBlocked) {
       // ACTIVAR bloqueio
       console.log('[HelpGames] ✅ ATIVANDO bloqueio local...');
+      blockageActivatedAt = Date.now(); // Registrar quando ativou
       const sites = await API.getBlockedSites();
       console.log('[HelpGames] 📥 Recebidos', sites.length, 'sites para bloquear');
       
@@ -234,13 +236,24 @@ async function checkBlockageStatus() {
     } else if (!status.isBlocked && currentlyBlocked) {
       // DESACTIVAR bloqueio (só notifica se estava bloqueado antes)
       console.log('[HelpGames] ❌ DESATIVANDO bloqueio local...');
+      console.log('[HelpGames] ⚠️ ATENÇÃO: Bloqueio estava ativo, agora vai desativar!');
+      console.log('[HelpGames] 🕐 Tempo que esteve ativo:', Math.floor((Date.now() - blockageActivatedAt) / 1000), 'segundos');
+      
       await dnsBlocker.stop();
       await vpnManager.stop();
       stopBlockedPageServer();
       currentlyBlocked = false;
       remainingSeconds = 0;
       updateTrayMenu();
-      showNotification('⏱️ Bloqueio Expirou', 'O período de protecção terminou.');
+      
+      // Só mostrar notificação se bloqueio durou mais de 10 segundos
+      const blockageDuration = Math.floor((Date.now() - blockageActivatedAt) / 1000);
+      if (blockageDuration > 10) {
+        showNotification('⏱️ Bloqueio Expirou', 'O período de protecção terminou.');
+      } else {
+        console.log('[HelpGames] ⚠️ Bloqueio durou menos de 10s - não notificar (possível bug)');
+      }
+      
       console.log('[HelpGames] ❌ Bloqueio removido.');
 
     } else if (status.isBlocked) {
