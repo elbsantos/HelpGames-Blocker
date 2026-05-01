@@ -5,14 +5,16 @@ const loginForm       = document.getElementById('loginForm');
 const loginError      = document.getElementById('loginError');
 const logoutBtn       = document.getElementById('logoutBtn');
 
-// LOGIN
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email    = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
   const submitBtn = loginForm.querySelector('button[type="submit"]');
 
-  if (loginError) loginError.textContent = '';
+  loginError.textContent = '';
+  loginError.classList.remove('show');
   loginScreen.classList.add('hidden');
   loadingScreen.classList.remove('hidden');
   if (submitBtn) submitBtn.disabled = true;
@@ -26,116 +28,139 @@ loginForm.addEventListener('submit', async (e) => {
     loadingScreen.classList.add('hidden');
     loginScreen.classList.remove('hidden');
     if (submitBtn) submitBtn.disabled = false;
-    if (loginError) loginError.textContent = result.error || 'Email ou senha incorrectos';
+    loginError.textContent = result.error || 'Email ou palavra-passe incorrectos';
+    loginError.classList.add('show');
   }
 });
 
-// MOSTRAR DASHBOARD
+document.getElementById('registerLink').addEventListener('click', () => {
+  window.electronAPI.openWebDashboard();
+});
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+
 function showDashboard(user) {
   loginScreen.classList.add('hidden');
   loadingScreen.classList.add('hidden');
-  dashboardScreen.style.display = 'block';
-
-  const headerRight = document.getElementById('headerRight');
-  if (headerRight) headerRight.style.display = 'flex';
+  dashboardScreen.classList.remove('hidden');
+  document.getElementById('headerRight').style.display = 'flex';
 
   if (user) {
-    const emailEl = document.getElementById('userEmail');
-    if (emailEl) emailEl.textContent = user.email;
-    const planEl = document.getElementById('userPlan');
-    if (planEl) planEl.textContent = user.plan === 'premium' ? 'Premium' : 'Gratuito';
+    document.getElementById('userEmail').textContent = user.email || '';
+    document.getElementById('userPlan').textContent  =
+      user.plan === 'premium' ? '⭐ Premium' : 'Plano Gratuito';
   }
 
   updateStatus();
+  startTimerTick();
 }
 
-// LOGOUT
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
+
 if (logoutBtn) {
   logoutBtn.addEventListener('click', async () => {
-    if (!confirm('Sair? O bloqueio sera desactivado.')) return;
-    dashboardScreen.style.display = 'none';
+    if (!confirm('Terminar sessão? O bloqueio será desactivado.')) return;
+    dashboardScreen.classList.add('hidden');
     loadingScreen.classList.remove('hidden');
     await window.electronAPI.logout();
-    const headerRight = document.getElementById('headerRight');
-    if (headerRight) headerRight.style.display = 'none';
     loadingScreen.classList.add('hidden');
     loginScreen.classList.remove('hidden');
-    document.getElementById('email').value = '';
+    document.getElementById('email').value    = '';
     document.getElementById('password').value = '';
+    stopTimerTick();
   });
 }
 
-// ABRIR DASHBOARD WEB
-const webBtn = document.getElementById('openWebDashboard');
-if (webBtn) webBtn.addEventListener('click', () => window.electronAPI.openWebDashboard());
+document.getElementById('openWebDashboard').addEventListener('click', () => {
+  window.electronAPI.openWebDashboard();
+});
 
-// ACTUALIZAR STATUS
+// ─── STATUS ───────────────────────────────────────────────────────────────────
+
 async function updateStatus() {
   const status = await window.electronAPI.getStatus();
-  renderStatus(status.isBlocked, 0, status.totalSites);
+  renderStatus(status.isBlocked, status.remainingSeconds || 0, status.totalSites);
 }
 
-function renderStatus(isBlocked, remainingMinutes, totalSites) {
+function renderStatus(isBlocked, remainingSeconds, totalSites) {
   const icon  = document.getElementById('statusIcon');
   const title = document.getElementById('statusTitle');
   const desc  = document.getElementById('statusDescription');
   const badge = document.getElementById('statusBadge');
-  const timerEl = document.getElementById('timerBlock');
-  const timerVal = document.getElementById('timerValue');
-  const sitesEl = document.getElementById('totalSites');
+  const timerEl  = document.getElementById('timerBlock');
+  const sitesEl  = document.getElementById('totalSites');
+  const stateEl  = document.getElementById('stateShort');
 
-  if (sitesEl) sitesEl.textContent = (totalSites || 0).toLocaleString('pt-PT');
+  if (sitesEl && totalSites != null)
+    sitesEl.textContent = Number(totalSites).toLocaleString('pt-PT');
 
   if (isBlocked) {
-    if (icon)  { icon.textContent = '🛡️'; icon.className = 'status-icon active'; }
-    if (title) title.textContent = 'Bloqueio Activo';
-    if (desc)  desc.textContent = 'Sites de apostas estao bloqueados neste dispositivo';
-    if (badge) { badge.textContent = 'PROTEGIDO'; badge.className = 'badge badge-active'; }
-    if (timerEl) timerEl.style.display = 'block';
-    if (timerVal && remainingMinutes > 0) {
-      timerVal.textContent = remainingMinutes + ' min restantes';
-    }
+    icon.textContent = '🛡️'; icon.className = 'status-icon active';
+    title.textContent = 'Bloqueio Activo';
+    desc.textContent  = 'Sites de apostas estão bloqueados neste dispositivo';
+    badge.textContent = 'PROTEGIDO'; badge.className = 'badge badge-active';
+    timerEl.classList.remove('hidden');
+    if (stateEl) stateEl.textContent = '🟢 ON';
+    updateTimerDisplay(remainingSeconds);
   } else {
-    if (icon)  { icon.textContent = '⚪'; icon.className = 'status-icon inactive'; }
-    if (title) title.textContent = 'Aguardando Activacao';
-    if (desc)  desc.textContent = 'Active o bloqueio no dashboard web do HelpGames';
-    if (badge) { badge.textContent = 'INACTIVO'; badge.className = 'badge badge-inactive'; }
-    if (timerEl) timerEl.style.display = 'none';
+    icon.textContent = '⚪'; icon.className = 'status-icon inactive';
+    title.textContent = 'Aguardando Activação';
+    desc.textContent  = 'Active o bloqueio no dashboard web do HelpGames';
+    badge.textContent = 'INACTIVO'; badge.className = 'badge badge-inactive';
+    timerEl.classList.add('hidden');
+    if (stateEl) stateEl.textContent = '⚪ OFF';
   }
 }
 
-// EVENTOS DO MAIN PROCESS
+// ─── TIMER LOCAL (conta regressiva baseada nos segundos recebidos do main) ────
+
+let timerInterval = null;
+let timerRemaining = 0;
+
+function startTimerTick() {
+  stopTimerTick();
+  timerInterval = setInterval(() => {
+    if (timerRemaining > 0) {
+      timerRemaining--;
+      updateTimerDisplay(timerRemaining);
+      if (timerRemaining === 0) updateStatus(); // revalidar estado no servidor
+    }
+  }, 1000);
+}
+
+function stopTimerTick() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function updateTimerDisplay(secs) {
+  timerRemaining = secs;
+  const el = document.getElementById('timerValue');
+  if (!el) return;
+  if (secs <= 0) { el.textContent = 'Expirado'; return; }
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  el.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+// ─── EVENTOS DO MAIN PROCESS ──────────────────────────────────────────────────
+
+window.electronAPI.onLoggedIn((user) => {
+  loadingScreen.classList.add('hidden');
+  showDashboard(user);
+});
+
 window.electronAPI.onStatusUpdate((data) => {
-  renderStatus(data.isBlocked, data.remainingMinutes, null);
+  renderStatus(data.isBlocked, data.remainingSeconds || 0, null);
 });
 
 window.electronAPI.onBlockageActivated((data) => {
-  renderStatus(true, data.remainingMinutes || 0, null);
-  updateStatus();
+  renderStatus(true, data.remainingSeconds || 0, null);
+  startTimerTick();
 });
 
 window.electronAPI.onBlockageDeactivated(() => {
   renderStatus(false, 0, null);
-  updateStatus();
-});
-
-window.electronAPI.onLoggedIn((user) => {
-  loadingScreen.classList.add('hidden');
-  loginScreen.classList.add('hidden');
-  showDashboard(user);
+  stopTimerTick();
 });
 
 console.log('[HelpGames Blocker] Interface carregada');
-
-// Actualizar campo "Estado" na stats row
-function updateStateShort(isBlocked) {
-  const el = document.getElementById('stateShort');
-  if (el) el.textContent = isBlocked ? '🟢 ON' : '⚪ OFF';
-}
-
-// Patch renderStatus para incluir stateShort
-const _origRender = renderStatus;
-function renderStatus(isBlocked, remainingMinutes, totalSites) {
-  _origRender(isBlocked, remainingMinutes, totalSites);
-  updateStateShort(isBlocked);
-}

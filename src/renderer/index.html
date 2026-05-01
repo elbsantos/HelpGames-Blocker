@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://helpgames.pt https://helpgames-production.up.railway.app;">
-  <title>HelpGames Blocker – Login</title>
+  <title>HelpGames Blocker</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -15,78 +15,77 @@
       align-items: center;
       justify-content: center;
     }
-
     .card {
       width: 340px;
       background: rgba(30,41,59,0.8);
       border: 1px solid rgba(148,163,184,0.15);
       border-radius: 16px;
-      padding: 32px;
+      padding: 28px 32px;
     }
-
     .logo {
       display: flex; align-items: center; gap: 12px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .logo-icon {
-      width: 40px; height: 40px;
+      width: 38px; height: 38px;
       background: linear-gradient(135deg,#3b82f6,#8b5cf6);
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
+      font-size: 20px;
     }
-    .logo h1 { font-size: 17px; font-weight: 700; color: #f1f5f9; }
+    .logo h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
     .logo p  { font-size: 11px; color: #64748b; }
-
-    h2 { font-size: 18px; color: #f1f5f9; margin-bottom: 6px; }
-    .subtitle { font-size: 12px; color: #94a3b8; margin-bottom: 22px; }
-
-    .form-group { margin-bottom: 14px; }
-    label { display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 5px; }
+    h2 { font-size: 17px; color: #f1f5f9; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; color: #94a3b8; margin-bottom: 18px; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #cbd5e1; margin-bottom: 4px; }
     input {
-      width: 100%; padding: 10px 12px;
+      width: 100%; padding: 9px 12px;
       background: rgba(15,23,42,0.7);
       border: 1px solid rgba(148,163,184,0.2);
       border-radius: 8px; color: #f1f5f9; font-size: 13px;
     }
     input:focus { outline: none; border-color: #3b82f6; }
-
-    .error {
-      background: rgba(239,68,68,0.15);
-      border: 1px solid rgba(239,68,68,0.3);
-      border-radius: 8px; padding: 8px 12px;
-      color: #fca5a5; font-size: 12px;
-      margin-bottom: 14px; display: none;
-    }
-    .error.show { display: block; }
-
     .btn {
-      width: 100%; padding: 11px;
+      width: 100%; padding: 10px;
       background: linear-gradient(135deg,#3b82f6,#8b5cf6);
       border: none; border-radius: 8px;
       color: white; font-size: 14px; font-weight: 600;
       cursor: pointer; transition: opacity 0.2s;
     }
-    .btn:hover { opacity: 0.9; }
+    .btn:hover  { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(148,163,184,0.2);
+      border-radius: 6px; padding: 5px 10px;
+      color: #94a3b8; font-size: 11px; cursor: pointer;
+    }
+    .btn-ghost:hover { border-color: #ef4444; color: #ef4444; }
+    .error {
+      background: rgba(239,68,68,0.15);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px; padding: 8px 12px;
+      color: #fca5a5; font-size: 12px;
+      margin-bottom: 12px; display: none;
+    }
+    .error.show { display: block; }
+    .info {
+      margin-top: 14px;
+      background: rgba(59,130,246,0.1);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 8px; padding: 9px 12px;
+      font-size: 11px; color: #93c5fd; line-height: 1.5;
+    }
     .footer {
-      margin-top: 16px; text-align: center;
+      margin-top: 12px; text-align: center;
       font-size: 11px; color: #64748b;
     }
     .footer a { color: #3b82f6; text-decoration: none; cursor: pointer; }
-
-    .info {
-      margin-top: 16px;
-      background: rgba(59,130,246,0.1);
-      border: 1px solid rgba(59,130,246,0.2);
-      border-radius: 8px; padding: 10px 12px;
-      font-size: 11px; color: #93c5fd; line-height: 1.5;
-    }
-
-    .loading { text-align: center; padding: 20px 0; display: none; }
+    /* Loading */
+    .loading { text-align: center; padding: 20px 0; }
     .spinner {
-      width: 36px; height: 36px;
+      width: 32px; height: 32px;
       border: 3px solid rgba(148,163,184,0.2);
       border-top-color: #3b82f6; border-radius: 50%;
       animation: spin 0.8s linear infinite;
@@ -94,7 +93,49 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading p { font-size: 13px; color: #94a3b8; }
-
+    /* Dashboard */
+    .dashboard-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 18px;
+    }
+    .user-info .user-email { font-size: 13px; color: #e2e8f0; font-weight: 600; }
+    .user-info .user-plan  { font-size: 11px; color: #64748b; margin-top: 1px; }
+    .status-card {
+      background: rgba(15,23,42,0.5);
+      border: 1px solid rgba(148,163,184,0.1);
+      border-radius: 12px; padding: 18px;
+      text-align: center; margin-bottom: 14px;
+    }
+    .status-icon       { font-size: 40px; display: block; margin-bottom: 8px; }
+    .status-icon.active   { filter: drop-shadow(0 0 12px rgba(59,130,246,0.6)); }
+    .status-icon.inactive { filter: none; }
+    .status-title { font-size: 15px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+    .status-desc  { font-size: 12px; color: #94a3b8; margin-bottom: 10px; }
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 20px;
+    }
+    .badge-active   { background: rgba(59,130,246,0.2);  border: 1px solid rgba(59,130,246,0.4);  color: #93c5fd; }
+    .badge-inactive { background: rgba(100,116,139,0.2); border: 1px solid rgba(100,116,139,0.3); color: #94a3b8; }
+    .timer-block {
+      background: rgba(59,130,246,0.1);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 10px; padding: 10px; margin-bottom: 14px;
+      text-align: center;
+    }
+    .timer-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+    .timer-value { font-size: 24px; font-weight: 700; color: #60a5fa; font-variant-numeric: tabular-nums; }
+    .stats-row {
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(15,23,42,0.4);
+      border: 1px solid rgba(148,163,184,0.08);
+      border-radius: 8px; padding: 8px 12px;
+      font-size: 12px; color: #64748b;
+      margin-bottom: 14px;
+    }
+    .stats-row strong { color: #3b82f6; font-size: 14px; }
+    /* Utils */
     .hidden { display: none !important; }
   </style>
 </head>
@@ -108,12 +149,11 @@
     </div>
   </div>
 
-  <div id="formSection">
+  <!-- ── ECRÃ DE LOGIN ── -->
+  <div id="loginScreen">
     <h2>Entrar</h2>
     <p class="subtitle">Liga a tua conta para activar a protecção</p>
-
-    <div class="error" id="errorMsg"></div>
-
+    <div class="error" id="loginError"></div>
     <form id="loginForm">
       <div class="form-group">
         <label>Email</label>
@@ -123,60 +163,53 @@
         <label>Palavra-passe</label>
         <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
       </div>
-      <button type="submit" class="btn" id="submitBtn">Entrar e Activar</button>
+      <button type="submit" class="btn">Entrar e Activar</button>
     </form>
-
     <div class="footer">
       Sem conta? <a id="registerLink">Criar conta em helpgames.pt</a>
     </div>
-
     <div class="info">
-      ℹ️ Após o login, o app fica em background na bandeja do sistema. O bloqueio é activado pelo dashboard web.
+      ℹ️ Após o login, o bloqueio é controlado pelo dashboard web. Esta janela mostra o estado actual.
     </div>
   </div>
 
-  <div class="loading" id="loadingSection">
+  <!-- ── LOADING ── -->
+  <div id="loadingScreen" class="loading hidden">
     <div class="spinner"></div>
     <p>A ligar à conta...</p>
   </div>
+
+  <!-- ── DASHBOARD (visível após login) ── -->
+  <div id="dashboardScreen" class="hidden">
+    <div class="dashboard-header" id="headerRight">
+      <div class="user-info">
+        <div class="user-email" id="userEmail"></div>
+        <div class="user-plan"  id="userPlan"></div>
+      </div>
+      <button class="btn-ghost" id="logoutBtn">Sair</button>
+    </div>
+
+    <div class="status-card">
+      <span id="statusIcon" class="status-icon inactive">⚪</span>
+      <div id="statusTitle" class="status-title">Aguardando Activação</div>
+      <div id="statusDescription" class="status-desc">Active o bloqueio no dashboard web do HelpGames</div>
+      <span id="statusBadge" class="badge badge-inactive">INACTIVO</span>
+    </div>
+
+    <div id="timerBlock" class="timer-block hidden">
+      <div class="timer-label">Tempo restante</div>
+      <div class="timer-value" id="timerValue">--:--</div>
+    </div>
+
+    <div class="stats-row">
+      <span><strong id="totalSites">0</strong> sites bloqueados</span>
+      <span id="stateShort">⚪ OFF</span>
+    </div>
+
+    <button class="btn" id="openWebDashboard">Abrir Dashboard Web</button>
+  </div>
 </div>
 
-<script>
-  const form        = document.getElementById('loginForm');
-  const errorMsg    = document.getElementById('errorMsg');
-  const submitBtn   = document.getElementById('submitBtn');
-  const formSection = document.getElementById('formSection');
-  const loadingSection = document.getElementById('loadingSection');
-
-  document.getElementById('registerLink').addEventListener('click', () => {
-    window.electronAPI.openWebDashboard();
-  });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errorMsg.classList.remove('show');
-    errorMsg.textContent = '';
-
-    const email    = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-
-    submitBtn.disabled = true;
-    formSection.classList.add('hidden');
-    loadingSection.style.display = 'block';
-
-    const result = await window.electronAPI.login({ email, password });
-
-    if (result.success) {
-      // Janela fecha automaticamente pelo main process
-      loadingSection.querySelector('p').textContent = '✅ Login efectuado!';
-    } else {
-      loadingSection.style.display = 'none';
-      formSection.classList.remove('hidden');
-      submitBtn.disabled = false;
-      errorMsg.textContent = result.error || 'Email ou palavra-passe incorrectos';
-      errorMsg.classList.add('show');
-    }
-  });
-</script>
+<script src="renderer.js"></script>
 </body>
 </html>
