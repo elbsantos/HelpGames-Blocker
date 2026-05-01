@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   login:            (credentials) => ipcRenderer.invoke('login', credentials),
   logout:           ()            => ipcRenderer.invoke('logout'),
   getStatus:        ()            => ipcRenderer.invoke('get-status'),
-  openWebDashboard: ()            => ipcRenderer.invoke('open-web-dashboard'),
+  openWebDashboard: (path)        => ipcRenderer.invoke('open-web-dashboard', path),
 
   // Eventos enviados pelo main process → renderer
   onLoggedIn:            (cb) => ipcRenderer.on('logged-in',            (_e, data) => cb(data)),

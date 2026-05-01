@@ -12,9 +12,18 @@ const store = new Store();
 const isDev = process.argv.includes('--dev');
 const isSetupMode = process.argv.includes('--setup');
 
-// Single-instance guard — second launch just focuses the existing window
+// Registar protocolo helpgames:// para receber callback de autenticação do browser
+app.setAsDefaultProtocolClient('helpgames');
+
+// Single-instance guard — segundo lançamento foca janela existente ou trata deep link
 if (!app.requestSingleInstanceLock()) { app.quit(); }
-else { app.on('second-instance', () => { if (loginWindow && !loginWindow.isDestroyed()) { loginWindow.show(); loginWindow.focus(); } }); }
+else {
+  app.on('second-instance', (_event, argv) => {
+    const url = argv.find(a => a.startsWith('helpgames://'));
+    if (url) handleDeepLink(url);
+    else if (loginWindow && !loginWindow.isDestroyed()) { loginWindow.show(); loginWindow.focus(); }
+  });
+}
 
 let tray;
 let loginWindow;
@@ -27,6 +36,42 @@ let blockageActivatedAt = 0;
 
 // Passar tempo restante para a página de bloqueio
 setRemainingSecondsGetter(() => remainingSeconds);
+
+// ============================================================
+// DEEP LINK — helpgames://callback?token=XXX
+// ============================================================
+async function handleDeepLink(url) {
+  try {
+    console.log('[HelpGames] Deep link recebido:', url);
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'callback') return;
+    const token = parsed.searchParams.get('token');
+    if (!token) return;
+
+    const result = await API.exchangeDeviceToken(token);
+    if (!result || !result.success) {
+      console.error('[HelpGames] Falha ao trocar device token:', result && result.error);
+      showNotification('❌ Ligação falhada', 'O token expirou ou é inválido. Tenta de novo.');
+      createLoginWindow();
+      return;
+    }
+
+    store.set('user', result.user);
+    store.set('sessionCookie', API.getSessionCookie());
+    updateTrayMenu();
+    await startPolling();
+    showNotification('✅ Conta ligada!', 'HelpGames Blocker está activo e a monitorizar.');
+
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      loginWindow.webContents.send('logged-in', result.user);
+    }
+  } catch (err) {
+    console.error('[HelpGames] Erro no deep link:', err.message);
+  }
+}
+
+// macOS: deep link chega via open-url quando app já está aberta
+app.on('open-url', (_event, url) => { handleDeepLink(url); });
 
 // ============================================================
 // JANELA DE LOGIN
@@ -313,7 +358,10 @@ ipcMain.handle('get-status', async () => ({
   totalSites: dnsBlocker ? dnsBlocker.getBlockedSitesCount() : 0,
 }));
 
-ipcMain.handle('open-web-dashboard', openDashboardWeb);
+ipcMain.handle('open-web-dashboard', (_event, path) => {
+  const base = 'https://helpgames-production.up.railway.app';
+  require('electron').shell.openExternal(path ? base + path : base);
+});
 
 // ============================================================
 // LIFECYCLE

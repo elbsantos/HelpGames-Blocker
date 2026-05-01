@@ -7,6 +7,11 @@ const logoutBtn       = document.getElementById('logoutBtn');
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
+// Botão de ligação via browser — abre a página de autorização no browser do utilizador
+document.getElementById('linkBrowserBtn').addEventListener('click', () => {
+  window.electronAPI.openWebDashboard('/auth/device');
+});
+
 loginForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const email    = document.getElementById('email').value.trim();

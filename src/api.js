@@ -185,6 +185,17 @@ class API {
     }
   }
 
+  // TROCAR TOKEN DE DISPOSITIVO POR SESSÃO
+  static async exchangeDeviceToken(token) {
+    try {
+      const result = await trpcMutate('auth.exchangeDeviceToken', { token });
+      return result || { success: false };
+    } catch (error) {
+      console.error('[API] Erro ao trocar device token:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   // HELPERS DE SESSAO
   static hasSession() {
     return sessionCookie !== null;
