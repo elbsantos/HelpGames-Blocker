@@ -40,7 +40,8 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "HelpGames.Blocker.Setup.exe"
     },
     "mac": {
       "target": "dmg",

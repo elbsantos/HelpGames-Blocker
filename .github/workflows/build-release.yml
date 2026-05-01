@@ -1,0 +1,39 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build instalador Windows
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar release "latest"
+        shell: bash
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          gh release create latest "dist/HelpGames.Blocker.Setup.exe" \
+            --title "HelpGames Blocker – Versão Mais Recente" \
+            --notes "Construído automaticamente a partir do branch main." \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
