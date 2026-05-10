@@ -26,13 +26,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Renomear instalador
-        shell: pwsh
-        run: |
-          $exe = Get-ChildItem dist -Filter "*.exe" | Where-Object { $_.Name -notlike "*.blockmap" } | Select-Object -First 1
-          Copy-Item $exe.FullName "dist\HelpGames.Blocker.Setup.exe"
-          Write-Host "Instalador: $($exe.Name) → HelpGames.Blocker.Setup.exe"
-
       - name: Publicar release "latest"
         shell: bash
         run: |
