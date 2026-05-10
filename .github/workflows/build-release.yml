@@ -17,15 +17,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Instalar dependências
-        run: npm ci
+        run: npm install
 
       - name: Build instalador Windows
         run: npm run build:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Renomear instalador
+        shell: bash
+        run: |
+          find dist -name "*.exe" -not -name "*.blockmap" | head -1 | xargs -I{} cp {} dist/HelpGames.Blocker.Setup.exe
 
       - name: Publicar release "latest"
         shell: bash
@@ -34,6 +38,6 @@ jobs:
           gh release create latest "dist/HelpGames.Blocker.Setup.exe" \
             --title "HelpGames Blocker – Versão Mais Recente" \
             --notes "Construído automaticamente a partir do branch main." \
-            --prerelease
+            --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
