@@ -191,7 +191,7 @@ function updateTrayMenu() {
 }
 
 function openDashboardWeb() {
-  require('electron').shell.openExternal('https://helpgames-production.up.railway.app');
+  require('electron').shell.openExternal('https://helpgames.app');
 }
 
 // Enviar evento para a janela se estiver aberta
@@ -359,7 +359,7 @@ ipcMain.handle('get-status', async () => ({
 }));
 
 ipcMain.handle('open-web-dashboard', (_event, path) => {
-  const base = 'https://helpgames-production.up.railway.app';
+  const base = 'https://helpgames.app';
   require('electron').shell.openExternal(path ? base + path : base);
 });
 

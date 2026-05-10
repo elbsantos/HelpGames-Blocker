@@ -108,7 +108,7 @@ const PAGE_HTML = `<!DOCTYPE html>
   </div>
   <a href="DASHBOARD_URL" class="btn">Ver Dashboard HelpGames</a>
   <div class="footer">
-    Bloqueio activado por ti em <a href="DASHBOARD_URL">helpgames.pt</a>
+    Bloqueio activado por ti em <a href="DASHBOARD_URL">helpgames.app</a>
   </div>
 </div>
 <script>
@@ -150,7 +150,7 @@ function setRemainingSecondsGetter(fn) {
 
 function handleRequest(req, res) {
   const parsed = url.parse(req.url, true);
-  const html   = PAGE_HTML.replace(/DASHBOARD_URL/g, 'https://helpgames-production.up.railway.app');
+  const html   = PAGE_HTML.replace(/DASHBOARD_URL/g, 'https://helpgames.app');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.writeHead(200);
   res.end(html);

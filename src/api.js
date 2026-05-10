@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const API_BASE_URL = process.env.API_URL || 'https://helpgames-production.up.railway.app/api/trpc';
+const API_BASE_URL = process.env.API_URL || 'https://helpgames.app/api/trpc';
 
 const http = axios.create({
   baseURL: API_BASE_URL,
