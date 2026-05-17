@@ -28,7 +28,7 @@ async function createTask(exePath) {
   const script = `
 $action  = New-ScheduledTaskAction -Execute '${exePath.replace(/'/g, "''")}' -WorkingDirectory '${path.dirname(exePath).replace(/'/g, "''")}'
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0 -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -RunLevel Highest -LogonType Interactive
 $task = New-ScheduledTask -Action $action -Trigger $trigger -Settings $settings -Principal $principal
 Register-ScheduledTask -TaskName '${TASK_NAME.replace(/'/g, "''")}' -InputObject $task -Force

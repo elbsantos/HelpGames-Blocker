@@ -282,7 +282,13 @@ async function checkBlockageStatus() {
       const sites = await API.getBlockedSites();
       console.log('[HelpGames] 📥 Recebidos', sites.length, 'sites para bloquear');
 
-      await dnsBlocker.setBlockedSites(sites);
+      try {
+        await dnsBlocker.setBlockedSites(sites);
+      } catch (hostsErr) {
+        console.error('[HelpGames] ❌ Não foi possível escrever no hosts:', hostsErr.message);
+        showNotification('⚠️ HelpGames Blocker', 'Falhou ao activar o bloqueio. Reinicia o programa como Administrador.');
+        return;
+      }
       await vpnManager.setBlockedSites(sites);
       startBlockedPageServer();
       currentlyBlocked = true;
@@ -377,7 +383,16 @@ app.whenReady().then(async () => {
       const dataDir = app.getPath('userData');
       await CertManager.init(dataDir);
       await setup.installCACert(dataDir).catch(console.error);
+
+      // Aguardar que a tarefa fique registada (até 10 x 500 ms = 5 s)
+      for (let i = 0; i < 10; i++) {
+        if (await setup.isTaskInstalled()) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+
       await setup.runTask().catch(console.error);
+      // Aguardar para que schtasks /run tenha tempo de arrancar o processo filho
+      await new Promise(r => setTimeout(r, 3000));
       app.quit();
       return;
     }
@@ -401,6 +416,7 @@ app.whenReady().then(async () => {
 
       // Task exists but app was launched directly (not via task) — trigger task and exit
       await setup.runTask().catch(console.error);
+      await new Promise(r => setTimeout(r, 3000));
       app.quit();
       return;
     }
@@ -412,6 +428,9 @@ app.whenReady().then(async () => {
 
   dnsBlocker = new DNSBlocker();
   await dnsBlocker.initialize();
+  if (dnsBlocker.canWriteHosts === false) {
+    showNotification('⚠️ HelpGames Blocker', 'Sem permissão para modificar o ficheiro hosts. O bloqueio pode não funcionar — reinicia como Administrador.');
+  }
 
   vpnManager = new VPNManager();
   await vpnManager.initialize(); // limpa regras antigas do firewall
@@ -438,7 +457,12 @@ app.whenReady().then(async () => {
   if (savedCookie && savedUser) {
     API.restoreSession(savedCookie);
     const me = await API.getMe();
-    if (me && me.id) {
+    if (me === 'NETWORK_ERROR') {
+      // Falha de rede transitória — manter sessão guardada e tentar de qualquer forma
+      console.log('[HelpGames] Erro de rede ao restaurar sessão — mantendo sessão e iniciando polling');
+      updateTrayMenu();
+      await startPolling();
+    } else if (me && me.id) {
       console.log('[HelpGames] Sessao restaurada:', me.email);
       store.set('user', me);
       updateTrayMenu();

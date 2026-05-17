@@ -31,6 +31,7 @@ class DNSBlocker {
     this.platform = os.platform();
     this.hostsPath = HOSTS_PATH[this.platform] || '/etc/hosts';
     this._onBlocked = null; // callback: (domain) => void
+    this.canWriteHosts = null; // null = ainda não testado, true/false após selfCheckWrite
   }
 
   // ============================================================
@@ -39,11 +40,37 @@ class DNSBlocker {
   async initialize() {
     console.log('[DNS] 🚀 Inicializando DNS Blocker (método hosts)...');
 
+    await this.selfCheckWrite();
+
     // Limpar entradas antigas que possam ter ficado de sessões anteriores
     await this.removeHostsEntries();
 
     this.active = false;
     console.log('[DNS] ✅ DNS Blocker pronto (aguarda lista de sites)');
+  }
+
+  // ============================================================
+  // AUTO-TESTE DE ESCRITA (chamado no initialize)
+  // ============================================================
+  async selfCheckWrite() {
+    try {
+      const probe = '# HelpGames-probe\n';
+      let content = '';
+      try { content = await fs.readFile(this.hostsPath, 'utf-8'); } catch {}
+
+      await this._writeHostsRaw(content + probe);
+      // Verificar se foi realmente escrito
+      const readBack = await fs.readFile(this.hostsPath, 'utf-8');
+      if (!readBack.includes('HelpGames-probe')) throw new Error('probe não encontrado após escrita');
+
+      // Repor conteúdo original
+      await this._writeHostsRaw(content);
+      this.canWriteHosts = true;
+      console.log('[DNS] ✅ Permissão de escrita no hosts confirmada');
+    } catch (err) {
+      this.canWriteHosts = false;
+      console.warn('[DNS] ⚠️ Sem permissão de escrita no hosts:', err.message);
+    }
   }
 
   // ============================================================
@@ -60,6 +87,12 @@ class DNSBlocker {
 
     // Reescrever o ficheiro hosts
     await this.writeHostsEntries();
+
+    // Limpar cache DNS para que o bloqueio faça efeito imediatamente
+    if (this.platform === 'win32') {
+      try { await execAsync('ipconfig /flushdns'); console.log('[DNS] ✅ Cache DNS limpa'); }
+      catch (e) { console.warn('[DNS] ⚠️ ipconfig /flushdns falhou:', e.message); }
+    }
 
     this.active = true;
     console.log('[DNS] ✅ Hosts actualizado – bloqueio activo');
@@ -91,10 +124,12 @@ class DNSBlocker {
       const newContent = content.trimEnd() + '\n\n' + lines.join('\n') + '\n';
 
       // Escrever
-      if (this.platform === 'win32') {
-        await this.writeFileWindows(newContent);
-      } else {
-        await this.writeFileUnix(newContent);
+      await this._writeHostsRaw(newContent);
+
+      // Verificar que o bloco ficou gravado
+      const readBack = await fs.readFile(this.hostsPath, 'utf-8');
+      if (!readBack.includes(HOSTS_MARKER_BEGIN)) {
+        throw Object.assign(new Error('Verificação pós-escrita falhou'), { code: 'VERIFY_FAILED' });
       }
 
       console.log('[DNS] ✅ Ficheiro hosts actualizado com', this.blockedSites.size, 'entradas');
@@ -120,11 +155,7 @@ class DNSBlocker {
       const cleaned = this.removeOurBlock(content);
 
       if (cleaned !== content) {
-        if (this.platform === 'win32') {
-          await this.writeFileWindows(cleaned);
-        } else {
-          await this.writeFileUnix(cleaned);
-        }
+        await this._writeHostsRaw(cleaned);
         console.log('[DNS] ✅ Entradas do HelpGames removidas do hosts');
       }
     } catch (error) {
@@ -140,36 +171,61 @@ class DNSBlocker {
   }
 
   // ============================================================
+  // ESCREVER FICHEIRO (interno) — plataforma independente
+  // ============================================================
+  async _writeHostsRaw(content) {
+    if (this.platform === 'win32') {
+      await this._writeHostsWindows(content);
+    } else {
+      await this._writeHostsUnix(content);
+    }
+  }
+
+  // ============================================================
   // ESCREVER FICHEIRO - WINDOWS (precisa de admin)
   // ============================================================
-  async writeFileWindows(content) {
-    console.log('[DNS] Tentando escrever arquivo hosts...');
+  async _writeHostsWindows(content) {
+    console.log('[DNS] Escrevendo ficheiro hosts (Windows)...');
+
+    // 1. Remover atributos read-only/system/hidden
+    try {
+      await execAsync(`attrib -R -S -H "${this.hostsPath}"`);
+    } catch (e) {
+      console.warn('[DNS] attrib falhou (ignorando):', e.message);
+    }
+
+    // 2. Tentativa directa via Node (funciona se app correr elevado)
+    try {
+      await fs.writeFile(this.hostsPath, content, 'utf-8');
+      console.log('[DNS] ✅ Hosts escrito directamente');
+      return;
+    } catch (err1) {
+      console.warn('[DNS] Escrita directa falhou:', err1.message);
+    }
+
+    // 3. Fallback via PowerShell Copy-Item (eleva implicitamente se script tiver permissão)
     const tmp = path.join(os.tmpdir(), 'helpgames-hosts.tmp');
     await fs.writeFile(tmp, content, 'utf-8');
-    console.log('[DNS] Arquivo temporário criado:', tmp);
-    
     try {
-      console.log('[DNS] Tentando copiar para hosts...');
-      await execAsync(`copy /Y "${tmp}" "${this.hostsPath}"`);
-      console.log('[DNS] ✅ Arquivo hosts atualizado com sucesso!');
-    } catch (err1) {
-      console.error('[DNS] ❌ Erro ao copiar (tentativa 1):', err1.message);
-      try {
-        console.log('[DNS] Tentando com cmd elevado...');
-        await execAsync(`cmd /c copy /Y "${tmp}" "${this.hostsPath}"`);
-        console.log('[DNS] ✅ Arquivo hosts atualizado (cmd elevado)!');
-      } catch (err2) {
-        console.error('[DNS] ❌❌ ERRO CRÍTICO - App NÃO está rodando como Administrador!');
-        console.error('[DNS] Detalhes:', err2.message);
-        throw new Error('Precisa rodar como Administrador para modificar arquivo hosts');
-      }
+      await execAsync(
+        `powershell.exe -NonInteractive -NoProfile -Command "Copy-Item -Path '${tmp.replace(/'/g, "''")}' -Destination '${this.hostsPath.replace(/'/g, "''")}' -Force"`
+      );
+      console.log('[DNS] ✅ Hosts escrito via PowerShell Copy-Item');
+      return;
+    } catch (err2) {
+      console.error('[DNS] ❌❌ ERRO CRÍTICO — app NÃO está a correr como Administrador!');
+      console.error('[DNS] Detalhes:', err2.message);
+      throw Object.assign(
+        new Error('É necessário correr como Administrador para modificar o ficheiro hosts'),
+        { code: 'NOT_ELEVATED' }
+      );
     }
   }
 
   // ============================================================
   // ESCREVER FICHEIRO - UNIX (precisa de sudo)
   // ============================================================
-  async writeFileUnix(content) {
+  async _writeHostsUnix(content) {
     const tmp = path.join(os.tmpdir(), 'helpgames-hosts.tmp');
     await fs.writeFile(tmp, content, 'utf-8');
     try {

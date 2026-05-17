@@ -98,11 +98,15 @@ class API {
   }
 
   // VERIFICAR SESSAO
+  // Retorna: objecto user | null (sessão inválida 401/403) | 'NETWORK_ERROR' (falha de rede/5xx)
   static async getMe() {
     try {
       return await trpcQuery('auth.me');
     } catch (e) {
-      return null;
+      if (e.response && (e.response.status === 401 || e.response.status === 403)) {
+        return null;
+      }
+      return 'NETWORK_ERROR';
     }
   }
 
